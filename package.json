@@ -1,0 +1,29 @@
+{
+  "name": "ossfactory-scaler",
+  "version": "0.1.0",
+  "description": "Autonomous AI agent team that scales, maintains, and improves OSS repos",
+  "type": "module",
+  "main": "src/index.ts",
+  "scripts": {
+    "start": "bun run src/index.ts",
+    "test": "bun test",
+    "build": "bun build src/index.ts --target bun --outdir dist"
+  },
+  "devDependencies": {
+    "bun-types": "latest",
+    "typescript": "^5.0.0"
+  },
+  "keywords": [
+    "oss",
+    "ai-agents",
+    "automation",
+    "typescript",
+    "bun"
+  ],
+  "author": "AdametherzLab",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/AdametherzLab/OSSFactory-Scaler"
+  }
+}
