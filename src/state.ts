@@ -43,10 +43,14 @@ export function addWorkItem(item: Omit<WorkItem, "id" | "createdAt" | "status">)
     status: "queued",
   };
 
-  const exists = state.workQueue.some(
+  // Check queue AND recent completed work to avoid re-queuing failed items
+  const inQueue = state.workQueue.some(
     w => w.repo === item.repo && w.type === item.type && w.status === "queued"
   );
-  if (!exists) {
+  const recentlyDone = state.completedWork.slice(-50).some(
+    w => w.repo === item.repo && w.description === item.description
+  );
+  if (!inQueue && !recentlyDone) {
     state.workQueue.push(workItem);
     state.workQueue.sort((a, b) => b.priority - a.priority);
     saveState(state);

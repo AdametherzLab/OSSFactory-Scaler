@@ -60,7 +60,8 @@ async function identifyUpgrades(audit: RepoAudit): Promise<string[]> {
   if (!audit.hasTests) opportunities.push("add-tests");
   if (audit.readmeLength < 800) opportunities.push("improve-readme");
   if (!audit.hasLicense) opportunities.push("add-license");
-  if (!audit.hasCi) opportunities.push("add-ci");
+  // NOTE: add-ci disabled — PAT lacks `workflow` scope, can't push .github/workflows/
+  // if (!audit.hasCi) opportunities.push("add-ci");
   if (audit.qualityScore < 60) opportunities.push("quality-sweep");
 
   if (opportunities.length === 0 && audit.hasTests && audit.hasReadme) {

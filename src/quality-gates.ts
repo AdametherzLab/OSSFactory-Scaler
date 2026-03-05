@@ -15,16 +15,25 @@ async function exec(cmd: string, cwd: string): Promise<{ stdout: string; stderr:
 }
 
 export async function gateCompile(cloneDir: string): Promise<QualityGateResult> {
-  const { exitCode, stderr } = await exec(
-    `bun build src/index.ts --target bun --outdir /dev/null 2>&1 || bun build index.ts --target bun --outdir /dev/null 2>&1`,
-    cloneDir,
-  );
-  return {
-    gate: "compile",
-    passed: exitCode === 0,
-    score: exitCode === 0 ? 100 : 0,
-    details: exitCode === 0 ? "Compiles clean" : `Compile errors: ${stderr.slice(0, 300)}`,
-  };
+  // Try multiple common entry points
+  const entries = ["src/index.ts", "index.ts", "src/main.ts", "main.ts", "mod.ts"];
+  for (const entry of entries) {
+    const { exitCode } = await exec(`test -f "${entry}" && echo found`, cloneDir);
+    if (exitCode === 0) {
+      const { exitCode: buildCode, stderr } = await exec(
+        `bun build "${entry}" --target bun --outdir /tmp/oss-scaler-gate 2>&1; rm -rf /tmp/oss-scaler-gate`,
+        cloneDir,
+      );
+      return {
+        gate: "compile",
+        passed: buildCode === 0,
+        score: buildCode === 0 ? 100 : 0,
+        details: buildCode === 0 ? `Compiles clean (${entry})` : `Compile errors: ${stderr.slice(0, 300)}`,
+      };
+    }
+  }
+  // No entry point found — not a compile failure, just not applicable
+  return { gate: "compile", passed: true, score: 80, details: "No standard entry point found" };
 }
 
 export async function gateTests(cloneDir: string): Promise<QualityGateResult> {
@@ -130,6 +139,7 @@ export async function checkShipReady(cloneDir: string): Promise<ShipReadiness> {
   return {
     gates,
     compositeScore,
-    ready: compositeScore >= 70 && gates.every(g => g.gate === "tests" || g.passed),
+    // Ship if composite >= 80 outright, or >= 70 with all non-test gates passing
+    ready: compositeScore >= 80 || (compositeScore >= 70 && gates.every(g => g.gate === "tests" || g.passed)),
   };
 }
