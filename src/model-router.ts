@@ -7,7 +7,7 @@ import type { AgentRole } from "./types";
 
 const MODELS: Record<ModelTier, ModelConfig> = {
   micro: {
-    id: "google/gemini-2.5-flash-lite-preview",
+    id: "google/gemini-2.5-flash-lite",
     inputCostPer1M: 0.075,
     outputCostPer1M: 0.30,
     maxContext: 1_000_000,

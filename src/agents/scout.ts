@@ -132,8 +132,11 @@ export async function runScout(): Promise<{ reposScanned: number; workItemsQueue
     }
   }
 
-  state.lastScoutRun = new Date().toISOString();
-  saveState(state);
+  // Reload fresh state to preserve work items added by addWorkItem() above
+  const freshState = loadState();
+  freshState.repoAudits = state.repoAudits;
+  freshState.lastScoutRun = new Date().toISOString();
+  saveState(freshState);
 
   award("scout", "quality-improvement", `Scanned ${reposToAudit.length} repos, queued ${workItemsQueued} items`);
   console.log(`[scout] Scanned ${reposToAudit.length} repos, queued ${workItemsQueued} work items`);
