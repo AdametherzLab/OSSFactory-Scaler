@@ -1,6 +1,10 @@
-// OSSFactory-Scaler — Telegram notifications (optional, graceful if no token)
+// OSSFactory-Scaler — Telegram notifications (matches OSS Factory reporting style)
 
-import { OSS_BOT_TOKEN, TELEGRAM_USER_ID } from "./config";
+import { OSS_BOT_TOKEN, TELEGRAM_USER_ID, GITHUB_ORG } from "./config";
+import { getBudgetSummary, getSpendByTier } from "./token-tracker";
+import { formatLeaderboard } from "./slicing-pie";
+import { loadState } from "./state";
+import type { VDayReport } from "./types";
 
 const API_BASE = "https://api.telegram.org/bot";
 
@@ -35,39 +39,113 @@ export async function sendTelegram(text: string): Promise<boolean> {
   }
 }
 
-export async function sendVDayReport(
-  vday: string,
-  summary: string,
-  budgetSpent: number,
-  budgetRemaining: number,
-): Promise<void> {
+export async function sendVDayReport(report: VDayReport): Promise<void> {
+  const budget = getBudgetSummary();
+  const tiers = getSpendByTier();
+  const state = loadState();
+
+  const shipCount = state.completedWork.filter(w => w.result?.startsWith("Shipped")).length;
+  const failCount = state.completedWork.filter(w => w.status === "failed").length;
+  const queueDepth = state.workQueue.filter(w => w.status === "queued").length;
+
+  // Budget bar
+  const pct = budget.pct;
+  const filled = Math.round(pct / 5);
+  const bar = "\u2593".repeat(Math.min(filled, 20)) + "\u2591".repeat(Math.max(0, 20 - filled));
+  const budgetWarn = pct > 80 ? " \u26A0\uFE0F" : "";
+
+  // Model usage
+  const modelLines = Object.entries(tiers)
+    .sort((a, b) => b[1] - a[1])
+    .map(([tier, cost]) => `${tier}($${cost.toFixed(3)})`)
+    .join(", ");
+
+  // Builder result emoji
+  const builderEmoji = report.builder.result === "shipped" ? "\u2705" :
+    report.builder.result === "failed" ? "\u274C" : "\u23ED\uFE0F";
+
   const msg = [
-    `<b>OSS Scaler ${vday}</b>`,
+    `\uD83D\uDCC5 <b>OSS Scaler \u2014 ${report.vday}</b>`,
+    `\uD83D\uDCB0 $${budget.spent.toFixed(4)} / $${budget.limit} (${pct.toFixed(0)}%)${budgetWarn}`,
+    `${bar} ${pct.toFixed(0)}% budget`,
     "",
-    summary,
+    `\uD83D\uDD0D <b>Scout:</b> ${report.scout.reposScanned} scanned, ${report.scout.workItemsQueued} queued`,
+    `${builderEmoji} <b>Builder:</b> ${report.builder.attempted ?? "idle"} \u2014 ${report.builder.result}`,
+    `\uD83C\uDFAD <b>Critic:</b> ${report.critic.observation.slice(0, 200)}`,
+    `\uD83C\uDF10 <b>Demo:</b> ${report.demo.created ? `created ${report.demo.created}` : report.demo.updated ? `updated ${report.demo.updated}` : "none"}`,
+    `\uD83D\uDD27 <b>Maintainer:</b> ${report.maintainer.issuesTriaged} triaged, ${report.maintainer.healthChecks} health checks`,
     "",
-    `<b>Budget:</b> $${budgetSpent.toFixed(4)} spent, $${budgetRemaining.toFixed(4)} remaining`,
+    `\uD83D\uDCCA Queue: ${queueDepth} | Shipped: ${shipCount} | Failed: ${failCount}`,
+    `\uD83E\uDDE0 Models: ${modelLines || "none"}`,
+    "",
+    `<b>Budget:</b> $${budget.spent.toFixed(4)} spent, $${budget.remaining.toFixed(4)} remaining`,
   ].join("\n");
+
   await sendTelegram(msg);
 }
 
-export async function sendMeetingReport(
-  vday: string,
-  leaderboard: string,
-  highlights: string,
+export async function sendShipNotification(
+  repoName: string,
+  version: string,
+  description: string,
 ): Promise<void> {
+  const state = loadState();
+  const budget = getBudgetSummary();
+  const shipCount = state.completedWork.filter(w => w.result?.startsWith("Shipped")).length;
+  const repoUrl = `https://github.com/${GITHUB_ORG}/${repoName}`;
+
   const msg = [
-    `<b>Team Meeting — ${vday}</b>`,
+    `\u2705 <b>OSS Scaler \u2014 SHIPPED</b>`,
     "",
-    "<b>Leaderboard:</b>",
+    `<b>${repoName} ${version}</b>`,
+    description,
+    "",
+    `Repo: ${repoUrl}`,
+    "",
+    `Total shipped: ${shipCount}`,
+    `Budget: $${budget.spent.toFixed(4)} / $${budget.limit}`,
+    "",
+    `${GITHUB_ORG} OSS Scaler`,
+  ].join("\n");
+
+  await sendTelegram(msg);
+}
+
+export async function sendMeetingReport(vday: string): Promise<void> {
+  const budget = getBudgetSummary();
+  const state = loadState();
+  const leaderboard = formatLeaderboard();
+
+  const shipCount = state.completedWork.filter(w => w.result?.startsWith("Shipped")).length;
+  const failCount = state.completedWork.filter(w => w.status === "failed").length;
+  const queueDepth = state.workQueue.filter(w => w.status === "queued").length;
+  const repoCount = state.repoAudits.length;
+  const avgQuality = state.repoAudits.length > 0
+    ? Math.round(state.repoAudits.reduce((s, a) => s + a.qualityScore, 0) / state.repoAudits.length)
+    : 0;
+
+  const msg = [
+    `\uD83D\uDCC5 <b>OSS Scaler \u2014 Team Meeting</b>`,
+    `<b>${vday}</b>`,
+    "",
+    `\uD83C\uDFC6 <b>Leaderboard:</b>`,
     leaderboard,
     "",
-    "<b>Highlights:</b>",
-    highlights,
+    `\uD83D\uDCCA <b>Stats:</b>`,
+    `  Repos tracked: ${repoCount}`,
+    `  Avg quality: ${avgQuality}/100`,
+    `  Shipped: ${shipCount} | Failed: ${failCount}`,
+    `  Queue depth: ${queueDepth}`,
+    "",
+    `\uD83D\uDCB0 <b>Budget:</b> $${budget.spent.toFixed(4)} / $${budget.limit} (${budget.pct.toFixed(0)}%)`,
+    `  ${budget.callCount} API calls today`,
+    "",
+    `${GITHUB_ORG} OSS Scaler`,
   ].join("\n");
+
   await sendTelegram(msg);
 }
 
 export async function sendAlert(message: string): Promise<void> {
-  await sendTelegram(`<b>[ALERT]</b> ${message}`);
+  await sendTelegram(`\u26A0\uFE0F <b>[ALERT]</b> ${message}`);
 }

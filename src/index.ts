@@ -1,10 +1,9 @@
 // OSSFactory-Scaler — Main VDay loop, wires all 5 agents
 
 import { getCurrentVDay, msUntilNextVDay, getVDayLabel, isMeetingVDay } from "./vday";
-import { isBudgetExhausted, getBudgetSummary, getRemainingBudget } from "./token-tracker";
+import { isBudgetExhausted, getBudgetSummary } from "./token-tracker";
 import { loadState, saveState } from "./state";
-import { formatLeaderboard } from "./slicing-pie";
-import { sendVDayReport, sendMeetingReport, sendAlert } from "./telegram";
+import { sendVDayReport, sendMeetingReport, sendShipNotification, sendAlert } from "./telegram";
 import { runScout } from "./agents/scout";
 import { runBuilder } from "./agents/builder";
 import { runCritic } from "./agents/critic";
@@ -65,27 +64,26 @@ async function runVDay(): Promise<VDayReport> {
   state.currentVDay = getCurrentVDay().index;
   saveState(state);
 
+  // Send ship notification (separate message, like OSS Factory)
+  if (builderResult.result === "shipped" && builderResult.attempted) {
+    const shipped = state.completedWork.find(
+      w => w.repo === builderResult.attempted && w.result?.startsWith("Shipped")
+    );
+    const version = shipped?.result?.match(/v[\d.]+/)?.[0] ?? "";
+    await sendShipNotification(
+      builderResult.attempted,
+      version,
+      shipped?.description ?? "Upgrade",
+    );
+  }
+
   // Send VDay report
-  const summary = [
-    `Scout: ${scoutResult.reposScanned} scanned, ${scoutResult.workItemsQueued} queued`,
-    `Builder: ${builderResult.attempted ?? "none"} — ${builderResult.result}`,
-    `Critic: ${criticResult.observation.slice(0, 100)}`,
-    `Demo: ${demoResult.created ? `created ${demoResult.created}` : "none"}`,
-    `Maintainer: ${maintainerResult.issuesTriaged} triaged`,
-  ].join("\n");
-  await sendVDayReport(vday, summary, budgetAfter.spent, budgetAfter.remaining);
+  await sendVDayReport(report);
 
   // Team meeting every 5th VDay
   if (isMeetingVDay()) {
     console.log("[main] Team meeting!");
-    const leaderboard = formatLeaderboard();
-    const highlights = [
-      `VDay: ${vday}`,
-      `Budget: $${budgetAfter.spent.toFixed(2)} / $${budgetAfter.limit}`,
-      `Queue depth: ${state.workQueue.filter(w => w.status === "queued").length}`,
-      `Total completed: ${state.completedWork.length}`,
-    ].join("\n");
-    await sendMeetingReport(vday, leaderboard, highlights);
+    await sendMeetingReport(vday);
   }
 
   return report;
