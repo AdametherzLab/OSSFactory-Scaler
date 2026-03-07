@@ -58,10 +58,28 @@ export function addWorkItem(item: Omit<WorkItem, "id" | "createdAt" | "status">)
   return workItem;
 }
 
-export function pickNextWork(): WorkItem | null {
+export function pickNextWork(inFlightNames?: Set<string>): WorkItem | null {
   const state = loadState();
-  const item = state.workQueue.find(w => w.status === "queued");
-  if (!item) return null;
+
+  // Smart prioritization (Phase 2.2): score work items dynamically
+  const scored = state.workQueue
+    .filter(w => w.status === "queued")
+    .filter(w => !inFlightNames || !inFlightNames.has(w.repo))
+    .map(w => {
+      let score = w.priority;
+      // Boost feature items
+      if (w.type === "feature") score += 20;
+      // Deprioritize repos with recent failures
+      const recentFailures = state.completedWork
+        .slice(-50)
+        .filter(c => c.repo === w.repo && c.status === "failed").length;
+      score -= recentFailures * 15;
+      return { item: w, score };
+    })
+    .sort((a, b) => b.score - a.score);
+
+  if (scored.length === 0) return null;
+  const item = scored[0].item;
   item.status = "in-progress";
   saveState(state);
   return item;

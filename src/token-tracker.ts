@@ -99,3 +99,18 @@ export function getSpendByTier(): Record<string, number> {
   }
   return byTier;
 }
+
+// Per-build budget tracking (Phase 2.5)
+let buildSpendStart = 0;
+let buildSpendEntries = 0;
+
+export function resetBuildSpend(): void {
+  const budget = loadBudget();
+  buildSpendStart = budget.totalCost;
+  buildSpendEntries = budget.entries.length;
+}
+
+export function getBuildSpend(): number {
+  const budget = loadBudget();
+  return Math.max(0, budget.totalCost - buildSpendStart);
+}

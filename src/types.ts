@@ -4,6 +4,8 @@ export type ModelTier = "micro" | "fast" | "standard" | "engineering";
 
 export type AgentRole = "scout" | "builder" | "demo" | "maintainer" | "critic";
 
+export type WorkItemType = "upgrade" | "fix" | "demo" | "docs" | "test" | "feature";
+
 export interface ModelConfig {
   id: string;
   inputCostPer1M: number;
@@ -50,16 +52,65 @@ export interface VDayWindow {
   durationMs: number;
 }
 
+export interface BuildResult {
+  attempted: string | null;
+  result: "shipped" | "failed" | "skipped";
+  repairPasses?: number;
+  gateDetails?: string;
+  costUsd?: number;
+  wallTimeMs?: number;
+}
+
 export interface VDayReport {
   vday: string;
   timestamp: string;
   scout: { reposScanned: number; workItemsQueued: number };
-  builder: { attempted: string | null; result: "shipped" | "failed" | "skipped" };
+  builders: BuildResult[];
   critic: { reviewed: boolean; observation: string };
   demo: { created: string | null; updated: string | null };
   maintainer: { issuesTriaged: number; healthChecks: number };
   budgetUsed: number;
   budgetRemaining: number;
+}
+
+export interface BuildFeedback {
+  timestamp: string;
+  repo: string;
+  workType: WorkItemType;
+  result: "shipped" | "failed" | "skipped";
+  gateDetails: string;
+  repairPasses: number;
+  costUsd: number;
+  wallTimeMs: number;
+  tier: ModelTier;
+  description: string;
+}
+
+export interface CriticHint {
+  rule: string;
+  category: string;
+  examples: string[];
+  score: number;
+  createdAt: string;
+}
+
+export interface PromptRule {
+  id: string;
+  rule: string;
+  context: string;
+  score: number;
+  applied: number;
+  createdAt: string;
+}
+
+export interface ImprovementSnapshot {
+  timestamp: string;
+  shipRate: number;
+  avgCostPerShip: number;
+  featureRatio: number;
+  avgRepairPasses: number;
+  buildsAnalyzed: number;
+  velocity: "improving" | "stable" | "declining";
 }
 
 export interface RepoAudit {
@@ -83,7 +134,7 @@ export interface RepoAudit {
 export interface WorkItem {
   id: string;
   repo: string;
-  type: "upgrade" | "fix" | "demo" | "docs" | "test";
+  type: WorkItemType;
   priority: number;
   description: string;
   createdAt: string;
@@ -142,10 +193,8 @@ export interface DemoPageConfig {
   title: string;
   description: string;
   repoUrl: string;
-  features: string[];
-  installCmd: string;
-  usageExample: string;
-  theme: "dark" | "light" | "forest" | "ocean" | "sunset";
+  version: string;
+  interactiveBody: string;
 }
 
 export interface HealthScore {

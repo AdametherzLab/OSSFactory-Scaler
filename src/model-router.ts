@@ -1,4 +1,6 @@
 // OSSFactory-Scaler — OpenRouter multi-model routing (4-tier cascade)
+// Phase 1.4: failure context injection in cascade
+// Phase 3.3: raceChat() — parallel fast+standard, take first valid
 
 import type { ModelTier, ModelConfig, ChatMessage, ChatResponse } from "./types";
 import { OPENROUTER_API_KEY, OPENROUTER_APP_TITLE } from "./config";
@@ -105,13 +107,62 @@ export async function cascadeChat(
   validate: (content: string) => boolean,
   maxTokens = 4096,
 ): Promise<ChatResponse | null> {
+  let lastFailureReason = "";
+
   for (const tier of CASCADE_ORDER) {
     try {
-      const resp = await chat(messages, tier, agent, `${task} [${tier}]`, maxTokens);
+      // Inject failure context from previous tier
+      const augmentedMessages = lastFailureReason
+        ? [
+            ...messages.slice(0, -1),
+            {
+              ...messages[messages.length - 1],
+              content: messages[messages.length - 1].content +
+                `\n\nPrevious model attempt failed validation: ${lastFailureReason}. Fix the output format.`,
+            },
+          ]
+        : messages;
+
+      const resp = await chat(augmentedMessages, tier, agent, `${task} [${tier}]`, maxTokens);
       if (validate(resp.content)) return resp;
+
+      lastFailureReason = `Output from ${tier} did not pass validation (returned content was not valid JSON array or missing required fields)`;
     } catch (err) {
+      lastFailureReason = `${tier} error: ${(err as Error).message}`;
       console.error(`[model-router] ${tier} failed for ${task}:`, (err as Error).message);
     }
   }
+  return null;
+}
+
+// Phase 3.3: Race fast + standard in parallel, take first valid result
+export async function raceChat(
+  messages: ChatMessage[],
+  agent: AgentRole,
+  task: string,
+  validate: (content: string) => boolean,
+  maxTokens = 4096,
+): Promise<ChatResponse | null> {
+  const raceTiers: ModelTier[] = ["fast", "standard"];
+
+  const results = await Promise.allSettled(
+    raceTiers.map(tier => chat(messages, tier, agent, `${task} [race-${tier}]`, maxTokens))
+  );
+
+  // Take first valid result (prefer faster/cheaper)
+  for (const result of results) {
+    if (result.status === "fulfilled" && validate(result.value.content)) {
+      return result.value;
+    }
+  }
+
+  // Both failed or invalid — fall back to engineering tier
+  try {
+    const resp = await chat(messages, "engineering", agent, `${task} [race-fallback]`, maxTokens);
+    if (validate(resp.content)) return resp;
+  } catch (err) {
+    console.error(`[model-router] raceChat engineering fallback failed:`, (err as Error).message);
+  }
+
   return null;
 }

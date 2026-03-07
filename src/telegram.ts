@@ -60,9 +60,16 @@ export async function sendVDayReport(report: VDayReport): Promise<void> {
     .map(([tier, cost]) => `${tier}($${cost.toFixed(3)})`)
     .join(", ");
 
-  // Builder result emoji
-  const builderEmoji = report.builder.result === "shipped" ? "\u2705" :
-    report.builder.result === "failed" ? "\u274C" : "\u23ED\uFE0F";
+  // Builder results summary
+  const builders = report.builders ?? [];
+  const buildShipped = builders.filter(b => b.result === "shipped").length;
+  const buildFailed = builders.filter(b => b.result === "failed").length;
+  const buildSkipped = builders.filter(b => b.result === "skipped").length;
+  const builderEmoji = buildShipped > 0 ? "\u2705" : buildFailed > 0 ? "\u274C" : "\u23ED\uFE0F";
+  const builderLines = builders
+    .filter(b => b.attempted)
+    .map(b => `  ${b.result === "shipped" ? "\u2705" : "\u274C"} ${b.attempted}${b.repairPasses ? ` (${b.repairPasses} repairs)` : ""}`)
+    .join("\n");
 
   const msg = [
     `\uD83D\uDCC5 <b>OSS Scaler \u2014 ${report.vday}</b>`,
@@ -70,7 +77,8 @@ export async function sendVDayReport(report: VDayReport): Promise<void> {
     `${bar} ${pct.toFixed(0)}% budget`,
     "",
     `\uD83D\uDD0D <b>Scout:</b> ${report.scout.reposScanned} scanned, ${report.scout.workItemsQueued} queued`,
-    `${builderEmoji} <b>Builder:</b> ${report.builder.attempted ?? "idle"} \u2014 ${report.builder.result}`,
+    `${builderEmoji} <b>Builder:</b> ${buildShipped}\u2705 ${buildFailed}\u274C ${buildSkipped}\u23ED\uFE0F`,
+    builderLines || "  (no builds)",
     `\uD83C\uDFAD <b>Critic:</b> ${report.critic.observation.slice(0, 200)}`,
     `\uD83C\uDF10 <b>Demo:</b> ${report.demo.created ? `created ${report.demo.created}` : report.demo.updated ? `updated ${report.demo.updated}` : "none"}`,
     `\uD83D\uDD27 <b>Maintainer:</b> ${report.maintainer.issuesTriaged} triaged, ${report.maintainer.healthChecks} health checks`,
